@@ -1,0 +1,8 @@
+
+[general]
+name=Visibility Analyzer
+description=Transmission line and point based visibility analysis tool
+version=1.1
+qgisMinimumVersion=3.22
+author=Ineffable
+email=ineffable0xd@gmail.com
