@@ -1,11 +1,11 @@
 [general]
-name=Visibility Analyzer
+name=Viewshed Analyzer
 description=Advanced batch viewshed and point-based visibility analysis tool with cumulative mapping and curvature correction.
-version=1.2.5
-qgisMinimumVersion=3.22
+version=1.2.6
+qgisMinimumVersion=3.0
 author=Ineffable
 email=ineffable0xd@gmail.com
-license=GPL-2.0-or-later
+license=GPL-2.0-or-later 
 icon=icon.svg
 tags=viewshed, visibility, terrain, analysis, cumulative, transmission
 experimental=False

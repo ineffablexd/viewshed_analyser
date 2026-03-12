@@ -21,7 +21,7 @@ import random
 class VisibilityDock(QDockWidget):
 
     def __init__(self, iface):
-        super().__init__("Visibility Analyzer")
+        super().__init__("Viewshed Analyzer")
         self.iface = iface
         self.canvas = iface.mapCanvas()
 
@@ -31,15 +31,16 @@ class VisibilityDock(QDockWidget):
 
         # Premium UI Styling
         container.setStyleSheet("""
-            QWidget { background-color: #f8f9fa; font-family: 'Segoe UI', sans-serif; }
-            QGroupBox { font-weight: bold; border: 1px solid #dee2e6; border-radius: 8px; margin-top: 15px; padding-top: 15px; background-color: white; }
+            QWidget { background-color: #f8f9fa; font-family: 'Segoe UI', sans-serif; color: #333; }
+            QGroupBox { font-weight: bold; border: 1px solid #dee2e6; border-radius: 8px; margin-top: 15px; padding-top: 15px; background-color: white; color: #212529; }
+            QComboBox { background-color: white; border: 1px solid #ced4da; border-radius: 4px; padding: 5px; color: #212529; }
+            QComboBox QAbstractItemView { background-color: white; color: #212529; selection-background-color: #007bff; selection-color: white; }
             QPushButton { background-color: #007bff; color: white; border: none; padding: 10px; border-radius: 5px; font-weight: bold; }
             QPushButton:hover { background-color: #0056b3; }
             QProgressBar { border: 1px solid #dee2e6; border-radius: 5px; text-align: center; background-color: #e9ecef; }
             QProgressBar::chunk { background-color: #28a745; border-radius: 4px; }
         """)
 
-        # 1. Project Selection
         in_group = QGroupBox("Project Selection")
         in_layout = QVBoxLayout()
         form = QFormLayout()
@@ -50,29 +51,20 @@ class VisibilityDock(QDockWidget):
         form.addRow("Observer Layer:", self.layer)
         in_layout.addLayout(form)
         
-        self.refresh_btn = QPushButton("Refresh Layers")
-        self.refresh_btn.setStyleSheet("background-color: #6c757d;")
-        self.refresh_btn.clicked.connect(self.populate_layers)
-        in_layout.addWidget(self.refresh_btn)
         in_group.setLayout(in_layout)
         layout.addWidget(in_group)
 
-        # 2. Parameters
         p_group = QGroupBox("Analysis Settings")
         p_layout = QFormLayout()
         self.height = QDoubleSpinBox()
         self.height.setSuffix(" m"); self.height.setValue(1.7)
         self.radius = QSpinBox()
         self.radius.setSuffix(" m"); self.radius.setMaximum(100000); self.radius.setValue(2000)
-        self.curv_corr = QCheckBox("Apply Earth Curvature Correction")
-        self.curv_corr.setChecked(True)
         p_layout.addRow("POV Height:", self.height)
         p_layout.addRow("Radius:", self.radius)
-        p_layout.addRow(self.curv_corr)
         p_group.setLayout(p_layout)
         layout.addWidget(p_group)
 
-        # 3. Operations
         op_group = QGroupBox("Operations")
         op_layout = QVBoxLayout()
         self.run_btn = QPushButton("Run Global Analysis")
@@ -89,7 +81,7 @@ class VisibilityDock(QDockWidget):
         op_group.setLayout(op_layout)
         layout.addWidget(op_group)
 
-        # Footer
+
         dev_info = QLabel("Developer: Ineffable | ineffable0xd@gmail.com")
         dev_info.setAlignment(Qt.AlignCenter)
         dev_info.setStyleSheet("color: #adb5bd; font-size: 10px; margin-top: 15px;")
@@ -169,9 +161,8 @@ class VisibilityDock(QDockWidget):
 
         h = self.height.value()
 
-        # Sample DEM elevation at the observer point
         val, ok = dem.dataProvider().sample(p_analysis, 1)
-        elev = round(val, 2) if ok else 0.0
+        elev = float(round(val, 2)) if ok else 0.0
 
         obs = QgsVectorLayer(f"Point?crs={canvas_crs.authid()}", f"observer_{idx} (Elev: {elev}m)", "memory")
         pr = obs.dataProvider()
@@ -186,7 +177,6 @@ class VisibilityDock(QDockWidget):
         sym = QgsSymbol.defaultSymbol(obs.geometryType()); sym.setColor(color)
         obs.setRenderer(QgsSingleSymbolRenderer(sym))
         
-        # Labeling - Show Elevation
         ls = QgsPalLayerSettings(); ls.fieldName = "Elevation"; ls.placement = QgsPalLayerSettings.AroundPoint
         tf = QgsTextFormat(); tf.setSize(9); tf.setColor(QColor("black"))
         bs = QgsTextBufferSettings(); bs.setEnabled(True); bs.setSize(1); bs.setColor(QColor("white"))
@@ -195,7 +185,7 @@ class VisibilityDock(QDockWidget):
 
         QgsProject.instance().addMapLayer(obs, False); group.insertLayer(0, obs)
 
-        flags = "-c" if self.curv_corr.isChecked() else ""
+        flags = "-c"
         res = processing.run("grass7:r.viewshed", {
             'input': dem, 'coordinates': f"{p_analysis.x()},{p_analysis.y()}",
             'observer_elevation': h, 'max_distance': self.radius.value(),

@@ -10,13 +10,13 @@ class VisibilityPlugin:
         self.action = None
 
     def initGui(self):
-        self.action = QAction("Visibility Analyzer", self.iface.mainWindow())
+        self.action = QAction("Viewshed Analyzer", self.iface.mainWindow())
         self.action.triggered.connect(self.run)
-        self.iface.addPluginToMenu("&Visibility Analyzer", self.action)
+        self.iface.addPluginToMenu("Ineffable Tools", self.action)
 
     def unload(self):
         if self.action:
-            self.iface.removePluginMenu("&Visibility Analyzer", self.action)
+            self.iface.removePluginMenu("Ineffable Tools", self.action)
 
     def run(self):
         if not self.dock:
