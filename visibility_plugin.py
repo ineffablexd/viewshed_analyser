@@ -1,4 +1,3 @@
-
 from qgis.PyQt.QtWidgets import QAction
 from qgis.PyQt.QtCore import Qt
 from .visibility_dialog import VisibilityDock
@@ -8,6 +7,7 @@ class VisibilityPlugin:
     def __init__(self, iface):
         self.iface = iface
         self.dock = None
+        self.action = None
 
     def initGui(self):
         self.action = QAction("Visibility Analyzer", self.iface.mainWindow())
@@ -15,7 +15,8 @@ class VisibilityPlugin:
         self.iface.addPluginToMenu("&Visibility Analyzer", self.action)
 
     def unload(self):
-        self.iface.removePluginMenu("&Visibility Analyzer", self.action)
+        if self.action:
+            self.iface.removePluginMenu("&Visibility Analyzer", self.action)
 
     def run(self):
         if not self.dock:

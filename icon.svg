@@ -1,0 +1,14 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="512" height="512" rx="100" fill="#ffffff"/>
+  <!-- Mountain Base -->
+  <path d="M256 120L440 420H72L256 120Z" fill="#2C3E50"/>
+  <path d="M256 120L340 420H172L256 120Z" fill="#34495E"/>
+  <!-- Viewshed Beam -->
+  <path d="M256 160C350 180 420 280 440 400H72C92 280 162 180 256 160Z" fill="#F1C40F" fill-opacity="0.4"/>
+  <!-- Observer Point -->
+  <circle cx="256" cy="150" r="22" fill="#E74C3C"/>
+  <circle cx="256" cy="150" r="10" fill="#FFFFFF" fill-opacity="0.6"/>
+  <!-- Decorative Grid Lines -->
+  <path d="M50 350H462" stroke="#BDC3C7" stroke-width="2" stroke-dasharray="10 10"/>
+  <path d="M50 400H462" stroke="#BDC3C7" stroke-width="2" stroke-dasharray="10 10"/>
+</svg>

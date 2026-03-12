@@ -1,8 +1,12 @@
-
 [general]
 name=Visibility Analyzer
-description=Transmission line and point based visibility analysis tool
-version=1.1
+description=Advanced batch viewshed and point-based visibility analysis tool with cumulative mapping and curvature correction.
+version=1.2.5
 qgisMinimumVersion=3.22
 author=Ineffable
 email=ineffable0xd@gmail.com
+license=GPL-2.0-or-later
+icon=icon.svg
+tags=viewshed, visibility, terrain, analysis, cumulative, transmission
+experimental=False
+deprecated=False

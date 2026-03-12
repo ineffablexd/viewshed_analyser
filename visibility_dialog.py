@@ -1,233 +1,217 @@
 from qgis.PyQt.QtWidgets import (
     QDockWidget, QWidget, QVBoxLayout, QLabel, QPushButton,
-    QComboBox, QSpinBox, QDoubleSpinBox
+    QComboBox, QSpinBox, QDoubleSpinBox, QProgressBar, QGroupBox,
+    QFormLayout, QApplication, QCheckBox, QHBoxLayout
 )
-
 from qgis.PyQt.QtGui import QColor
-
-from qgis.gui import QgsMapToolEmitPoint
-
 from qgis.core import (
     QgsProject, QgsFeature, QgsGeometry, QgsPointXY,
-    QgsVectorLayer, QgsRasterLayer,
-    QgsSymbol, QgsSingleSymbolRenderer
+    QgsVectorLayer, QgsRasterLayer, QgsSymbol,
+    QgsSingleSymbolRenderer, QgsRasterShader, 
+    QgsColorRampShader, QgsSingleBandPseudoColorRenderer,
+    QgsCoordinateTransform, QgsField,
+    QgsPalLayerSettings, QgsTextFormat, QgsTextBufferSettings,
+    QgsVectorLayerSimpleLabeling
 )
+from qgis.PyQt.QtCore import QVariant, Qt
 
 import processing
 import random
 
-
-class ClickTool(QgsMapToolEmitPoint):
-
-    def __init__(self, canvas, plugin):
-        super().__init__(canvas)
-        self.plugin = plugin
-
-    def canvasReleaseEvent(self, event):
-        point = self.toMapCoordinates(event.pos())
-        self.plugin.run_viewshed(point)
-
-
 class VisibilityDock(QDockWidget):
 
     def __init__(self, iface):
-
         super().__init__("Visibility Analyzer")
-
         self.iface = iface
         self.canvas = iface.mapCanvas()
 
         container = QWidget()
         layout = QVBoxLayout()
+        container.setMinimumWidth(320)
 
-        layout.addWidget(QLabel("DEM Layer"))
+        # Premium UI Styling
+        container.setStyleSheet("""
+            QWidget { background-color: #f8f9fa; font-family: 'Segoe UI', sans-serif; }
+            QGroupBox { font-weight: bold; border: 1px solid #dee2e6; border-radius: 8px; margin-top: 15px; padding-top: 15px; background-color: white; }
+            QPushButton { background-color: #007bff; color: white; border: none; padding: 10px; border-radius: 5px; font-weight: bold; }
+            QPushButton:hover { background-color: #0056b3; }
+            QProgressBar { border: 1px solid #dee2e6; border-radius: 5px; text-align: center; background-color: #e9ecef; }
+            QProgressBar::chunk { background-color: #28a745; border-radius: 4px; }
+        """)
+
+        # 1. Project Selection
+        in_group = QGroupBox("Project Selection")
+        in_layout = QVBoxLayout()
+        form = QFormLayout()
+        
         self.dem = QComboBox()
-        layout.addWidget(self.dem)
-
-        layout.addWidget(QLabel("Input Layer (towers or line)"))
         self.layer = QComboBox()
-        layout.addWidget(self.layer)
+        form.addRow("DEM Layer:", self.dem)
+        form.addRow("Observer Layer:", self.layer)
+        in_layout.addLayout(form)
+        
+        self.refresh_btn = QPushButton("Refresh Layers")
+        self.refresh_btn.setStyleSheet("background-color: #6c757d;")
+        self.refresh_btn.clicked.connect(self.populate_layers)
+        in_layout.addWidget(self.refresh_btn)
+        in_group.setLayout(in_layout)
+        layout.addWidget(in_group)
 
-        layout.addWidget(QLabel("POV Height (m)"))
+        # 2. Parameters
+        p_group = QGroupBox("Analysis Settings")
+        p_layout = QFormLayout()
         self.height = QDoubleSpinBox()
-        self.height.setValue(1.7)
-        layout.addWidget(self.height)
-
-        layout.addWidget(QLabel("Radius (m)"))
+        self.height.setSuffix(" m"); self.height.setValue(1.7)
         self.radius = QSpinBox()
-        self.radius.setMaximum(100000)
-        self.radius.setValue(2000)
-        layout.addWidget(self.radius)
+        self.radius.setSuffix(" m"); self.radius.setMaximum(100000); self.radius.setValue(2000)
+        self.curv_corr = QCheckBox("Apply Earth Curvature Correction")
+        self.curv_corr.setChecked(True)
+        p_layout.addRow("POV Height:", self.height)
+        p_layout.addRow("Radius:", self.radius)
+        p_layout.addRow(self.curv_corr)
+        p_group.setLayout(p_layout)
+        layout.addWidget(p_group)
 
-        self.run_layer_btn = QPushButton("Run From Layer Vertices")
-        self.run_layer_btn.clicked.connect(self.run_from_layer)
-        layout.addWidget(self.run_layer_btn)
+        # 3. Operations
+        op_group = QGroupBox("Operations")
+        op_layout = QVBoxLayout()
+        self.run_btn = QPushButton("Run Global Analysis")
+        self.run_btn.clicked.connect(self.run_from_layer)
+        self.reset_btn = QPushButton("Reset Analysis Results")
+        self.reset_btn.setStyleSheet("background-color: #dc3545;")
+        self.reset_btn.clicked.connect(self.reset_results)
+        self.progress = QProgressBar()
+        self.progress.setFormat("%v / %m Points")
+        
+        op_layout.addWidget(self.run_btn)
+        op_layout.addWidget(self.reset_btn)
+        op_layout.addWidget(self.progress)
+        op_group.setLayout(op_layout)
+        layout.addWidget(op_group)
 
-        self.click_btn = QPushButton("Click On Map Mode")
-        self.click_btn.clicked.connect(self.activate_click)
-        layout.addWidget(self.click_btn)
+        # Footer
+        dev_info = QLabel("Developer: Ineffable | ineffable0xd@gmail.com")
+        dev_info.setAlignment(Qt.AlignCenter)
+        dev_info.setStyleSheet("color: #adb5bd; font-size: 10px; margin-top: 15px;")
+        layout.addWidget(dev_info)
 
+        layout.addStretch()
         container.setLayout(layout)
         self.setWidget(container)
 
         self.populate_layers()
+        QgsProject.instance().layersAdded.connect(self.populate_layers)
+        QgsProject.instance().layersRemoved.connect(self.populate_layers)
 
-    # ------------------------------------------------
+    def showEvent(self, event):
+        self.populate_layers()
+        super().showEvent(event)
 
     def populate_layers(self):
-
-        self.dem.clear()
-        self.layer.clear()
-
+        self.dem.clear(); self.layer.clear()
         for l in QgsProject.instance().mapLayers().values():
-
             self.layer.addItem(l.name(), l)
+            if l.type() == 1: self.dem.addItem(l.name(), l)
 
-            if l.type() == 1:  # raster
-                self.dem.addItem(l.name(), l)
-
-    # ------------------------------------------------
-
-    def activate_click(self):
-
-        tool = ClickTool(self.canvas, self)
-        self.canvas.setMapTool(tool)
-
-    # ------------------------------------------------
+    def reset_results(self):
+        root = QgsProject.instance().layerTreeRoot()
+        group = root.findGroup("Viewsheds")
+        if group:
+            for child in list(group.children()):
+                QgsProject.instance().removeMapLayer(child.layerId())
+            root.removeChildNode(group)
+        for layer in list(QgsProject.instance().mapLayers().values()):
+            if layer.name() == "Hillshade":
+                QgsProject.instance().removeMapLayer(layer.id())
 
     def create_hillshade(self):
-
         dem = self.dem.currentData()
-
-        if not dem:
-            return
-
-        # check if hillshade already exists
-        for layer in QgsProject.instance().mapLayers().values():
-            if layer.name() == "Hillshade":
-                return
-
-        result = processing.run(
-            "gdal:hillshade",
-            {
-                'INPUT': dem.source(),
-                'AZIMUTH': 315,
-                'ALTITUDE': 45,
-                'Z_FACTOR': 1,
-                'OUTPUT': 'TEMPORARY_OUTPUT'
-            }
-        )
-
-        path = result['OUTPUT']
-
-        hillshade = QgsRasterLayer(path, "Hillshade")
-
-        if hillshade.isValid():
-            QgsProject.instance().addMapLayer(hillshade)
-
-    # ------------------------------------------------
+        if not dem: return
+        for l in list(QgsProject.instance().mapLayers().values()):
+            if l.name() == "Hillshade": QgsProject.instance().removeMapLayer(l.id())
+        
+        res = processing.run("gdal:hillshade", {'INPUT': dem, 'Z_FACTOR': 1, 'OUTPUT': 'TEMPORARY_OUTPUT'})
+        hs = QgsRasterLayer(res['OUTPUT'], "Hillshade")
+        if hs.isValid():
+            QgsProject.instance().addMapLayer(hs, False)
+            QgsProject.instance().layerTreeRoot().insertLayer(0, hs)
 
     def run_from_layer(self):
-
-        layer = self.layer.currentData()
-
-        if not layer:
-            return
-
+        l = self.layer.currentData()
+        if not l: return
         self.create_hillshade()
-
-        vertices = processing.run(
-            "native:extractvertices",
-            {
-                'INPUT': layer,
-                'OUTPUT': 'memory:'
-            }
-        )['OUTPUT']
-
-        i = 1
-
-        for f in vertices.getFeatures():
-
-            p = f.geometry().asPoint()
-
-            self.run_viewshed(p, i)
-
-            i += 1
-
-    # ------------------------------------------------
-
-    def run_viewshed(self, point, index=1):
-
-        dem = self.dem.currentData()
-
-        if not dem:
-            return
-
+        
         root = QgsProject.instance().layerTreeRoot()
-
         group = root.findGroup("Viewsheds")
+        if not group: group = root.insertGroup(0, "Viewsheds")
+        else:
+            if root.children()[0] != group:
+                c = group.clone(); root.insertChildNode(0, c); root.removeChildNode(group); group = c
+        group.setExpanded(True)
 
-        if not group:
-            group = root.addGroup("Viewsheds")
+        v = processing.run("native:extractvertices", {'INPUT': l, 'OUTPUT': 'memory:'})['OUTPUT']
+        count = v.featureCount()
+        self.progress.setMaximum(count)
+        
+        for i, f in enumerate(v.getFeatures(), 1):
+            self.run_viewshed(f.geometry().asPoint(), i, group)
+            self.progress.setValue(i); QApplication.processEvents()
 
-        # ------------------------------------
-        # observer point
-        # ------------------------------------
+    def run_viewshed(self, point, idx, group):
+        dem = self.dem.currentData()
+        if not dem: return
+        
+        color = QColor(random.randint(0,255), random.randint(0,255), random.randint(0,255))
+        dem_crs = dem.crs(); canvas_crs = self.canvas.mapSettings().destinationCrs()
+        p_analysis = point
+        if canvas_crs != dem_crs:
+            p_analysis = QgsCoordinateTransform(canvas_crs, dem_crs, QgsProject.instance()).transform(point)
 
-        observer = QgsVectorLayer(
-            "Point?crs=" + dem.crs().authid(),
-            f"observer_{index}",
-            "memory"
-        )
+        h = self.height.value()
 
-        pr = observer.dataProvider()
+        # Sample DEM elevation at the observer point
+        val, ok = dem.dataProvider().sample(p_analysis, 1)
+        elev = round(val, 2) if ok else 0.0
 
-        feat = QgsFeature()
-        feat.setGeometry(QgsGeometry.fromPointXY(QgsPointXY(point)))
+        obs = QgsVectorLayer(f"Point?crs={canvas_crs.authid()}", f"observer_{idx} (Elev: {elev}m)", "memory")
+        pr = obs.dataProvider()
+        pr.addAttributes([QgsField("Elevation", QVariant.Double), QgsField("POV_Height", QVariant.Double)])
+        obs.updateFields()
+        
+        f = QgsFeature()
+        f.setGeometry(QgsGeometry.fromPointXY(point))
+        f.setAttributes([elev, h])
+        pr.addFeature(f)
 
-        pr.addFeature(feat)
+        sym = QgsSymbol.defaultSymbol(obs.geometryType()); sym.setColor(color)
+        obs.setRenderer(QgsSingleSymbolRenderer(sym))
+        
+        # Labeling - Show Elevation
+        ls = QgsPalLayerSettings(); ls.fieldName = "Elevation"; ls.placement = QgsPalLayerSettings.AroundPoint
+        tf = QgsTextFormat(); tf.setSize(9); tf.setColor(QColor("black"))
+        bs = QgsTextBufferSettings(); bs.setEnabled(True); bs.setSize(1); bs.setColor(QColor("white"))
+        tf.setBuffer(bs); ls.setFormat(tf)
+        obs.setLabeling(QgsVectorLayerSimpleLabeling(ls)); obs.setLabelsEnabled(True)
 
-        observer.updateExtents()
+        QgsProject.instance().addMapLayer(obs, False); group.insertLayer(0, obs)
 
-        symbol = QgsSymbol.defaultSymbol(observer.geometryType())
-
-        color = QColor(
-            random.randint(0,255),
-            random.randint(0,255),
-            random.randint(0,255)
-        )
-
-        symbol.setColor(color)
-
-        observer.setRenderer(QgsSingleSymbolRenderer(symbol))
-
-        QgsProject.instance().addMapLayer(observer, False)
-
-        group.addLayer(observer)
-
-        # ------------------------------------
-        # viewshed
-        # ------------------------------------
-
-        result = processing.run(
-            "grass7:r.viewshed",
-            {
-                'input': dem.source(),
-                'coordinates': f"{point.x()},{point.y()}",
-                'observer_elevation': self.height.value(),
-                'max_distance': self.radius.value(),
-                'output': 'TEMPORARY_OUTPUT'
-            }
-        )
-
-        path = result['output']
-
-        viewshed = QgsRasterLayer(path, f"viewshed_{index}")
-
-        if viewshed.isValid():
-
-            QgsProject.instance().addMapLayer(viewshed, False)
-
-            group.addLayer(viewshed)
-
-            viewshed.renderer().setOpacity(0.6)
+        flags = "-c" if self.curv_corr.isChecked() else ""
+        res = processing.run("grass7:r.viewshed", {
+            'input': dem, 'coordinates': f"{p_analysis.x()},{p_analysis.y()}",
+            'observer_elevation': h, 'max_distance': self.radius.value(),
+            'flags': flags, 'output': 'TEMPORARY_OUTPUT'
+        })
+        
+        path = res.get('output') or res.get('output_raster') or res.get('OUTPUT')
+        if not path: return
+        vs = QgsRasterLayer(path, f"viewshed_{idx}")
+        if vs.isValid():
+            sh = QgsRasterShader(); cr = QgsColorRampShader(); cr.setColorRampType(QgsColorRampShader.Discrete)
+            cr.setColorRampItemList([
+                QgsColorRampShader.ColorRampItem(-1, QColor(0,0,0,0), "Invisible"),
+                QgsColorRampShader.ColorRampItem(1e9, color, "Visible")
+            ])
+            sh.setRasterShaderFunction(cr)
+            vs.setRenderer(QgsSingleBandPseudoColorRenderer(vs.dataProvider(), 1, sh))
+            vs.renderer().setOpacity(1.0)
+            QgsProject.instance().addMapLayer(vs, False); group.insertLayer(1, vs); vs.triggerRepaint()
