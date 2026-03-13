@@ -141,7 +141,7 @@ class VisibilityDock(QDockWidget):
                 c = group.clone(); root.insertChildNode(0, c); root.removeChildNode(group); group = c
         group.setExpanded(True)
 
-        v = processing.run("native:extractvertices", {'INPUT': l, 'OUTPUT': 'memory:'})['OUTPUT']
+        v = processing.run("native:extractvertices", {'INPUT': l.id(), 'OUTPUT': 'memory:'})['OUTPUT']
         count = v.featureCount()
         self.progress.setMaximum(count)
         
